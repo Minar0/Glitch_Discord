@@ -103,7 +103,7 @@ class GlitchClient(discord.Client):
 
 api_keys = configparser.ConfigParser()
 api_keys.read('api_keys.ini')
-discord_key = api_keys['API']['key']
+discord_key = api_keys['API']['discord']
 
 intents = discord.Intents.default()
 intents.message_content = True
