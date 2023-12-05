@@ -1,5 +1,4 @@
 api_keys.ini
 backup/**
 tests/**
-llama-gpt/**
 start.sh
