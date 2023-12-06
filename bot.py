@@ -7,10 +7,11 @@ import aiohttp
 import configparser
 import pprint
 import re
+import csv
 
 #region Tweakable Values
 max_tokens = 50 #How many tokens Glitch is allowed to generate. Setting it too low will lead to him getting cut off. Setting it too high might lead to him getting... wordy.
-creativity = 0.5 #Value between 0-1. Also called temperature. Lower values are more deterministic. They might be faster too.
+creativity = 0.7 #Value between 0-1. Also called temperature. Lower values are more deterministic. They might be faster too.
 message_lookback_amount = 5 #How many messages Glitch will look back in for conversation context. Setting it too high could lead to long response times.
 print_proc_message = False #Used for trouble shooting. Prints the message sent to LlamaGPT in the log. Kinda long and annoying so I usually leave it off unless needed.
 link_to_memory = './glitch_memory' #Location for all the things Glitch knows.
@@ -43,6 +44,12 @@ class GlitchClient(discord.Client):
         if not needs_response:
             return
 
+        contains_word, filtered_word = contains_filtered_word(message.clean_content)
+        if contains_word:
+            print(f'Input message filtered on word: {filtered_word}')
+            await message.reply("You're message was caught by my filter, let Minaro know if you think this is an error")
+            return
+
         author_global_name = message.author.global_name
         author_username = message.author.name
         content = message.clean_content
@@ -69,6 +76,11 @@ class GlitchClient(discord.Client):
                 post_processed_response = re.sub(pattern, '', response)
             else:
                 post_processed_response = response
+
+            contains_word, filtered_word = contains_filtered_word(post_processed_response)
+            if contains_word:
+                post_processed_response = '[Filtered]'
+                print(f'Response message filtered on word: {filtered_word}')
 
             if opinion_change > 0:
                 await message.add_reaction('😀')
@@ -171,6 +183,10 @@ def write_dict_to_json(dict, filename):
 def load_txt(filename):
     with open(filename, 'r') as file:
         return file.read()
+def load_first_csv_row(filename):
+    with open(filename, 'r', newline='', encoding='utf-8') as csvfile:
+        reader = csv.reader(csvfile)
+        return next(reader, None)
 #https://tenor.com/view/futurama-robot-pincers-gif-17376524
 def clamp_value(min, max, value):
     if value < min:
@@ -179,7 +195,13 @@ def clamp_value(min, max, value):
         return max
     else:
         return value
-
+#Checks if the response needs to be filtered. It's necessary when you have shit friends.
+def contains_filtered_word(text):
+    text_array = text.split()
+    for word in text_array:
+        if word.lower() in filter_list:
+            return True, word
+    return False, ''
 #endregion
 
 #region Initialization
@@ -191,8 +213,8 @@ intents = discord.Intents.default()
 intents.message_content = True
 
 personality = load_txt(f'{link_to_memory}/personality.txt')
-
 opinions = load_json_to_dict(f'{link_to_memory}/opinions_list.json')
+filter_list = load_first_csv_row(f'{link_to_memory}/filter_list.csv')
 
 client = GlitchClient(personality, opinions, intents)
 client.run(discord_key)
