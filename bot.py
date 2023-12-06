@@ -2,20 +2,24 @@ import discord
 from discord.flags import Intents
 from datetime import datetime
 from typing import Any
+import json
 import aiohttp
 import configparser
 import pprint
+import re
 
 #region Tweakable Values
-max_tokens = 50 #How many tokens Glitch is allowed to generate. Setting it too low will lead to him getting cut off. Setting it too high might lead to him getting... wordy
-creativity = 0.5 #Value between 0-1. Also called temperature. Lower values are more deterministic. They might be faster too
-message_lookback_amount = 5 #How many messages Glitch will look back in for conversation context. Setting it too high could lead to long response times
-print_proc_message = False #Used for trouble shooting. Prints the message sent to LlamaGPT in the log. Kinda long and annoying so I usually leave it off unless needed
+max_tokens = 50 #How many tokens Glitch is allowed to generate. Setting it too low will lead to him getting cut off. Setting it too high might lead to him getting... wordy.
+creativity = 0.5 #Value between 0-1. Also called temperature. Lower values are more deterministic. They might be faster too.
+message_lookback_amount = 5 #How many messages Glitch will look back in for conversation context. Setting it too high could lead to long response times.
+print_proc_message = False #Used for trouble shooting. Prints the message sent to LlamaGPT in the log. Kinda long and annoying so I usually leave it off unless needed.
+link_to_memory = './glitch_memory' #Location for all the things Glitch knows.
 #endregion
 
 class GlitchClient(discord.Client):
-    def __init__(self, personality_string, intents: Intents) -> None:
-        self.personality_string=personality_string
+    def __init__(self, personality_string, people_opinions, intents: Intents) -> None:
+        self.personality_string = personality_string
+        self.people_opinions = people_opinions
         super().__init__(intents=intents)
 
 
@@ -39,17 +43,38 @@ class GlitchClient(discord.Client):
         if not needs_response:
             return
 
-        author_name = "Minaro" if message.author.id == 308746205859414028 else message.author.display_name
+        author_global_name = message.author.global_name
+        author_username = message.author.name
         content = message.clean_content
-        print(f'\nMessage from {author_name}: {content}')
+        print(f'\nMessage from {author_global_name}: {content}')
         
         #Let channel know that he's typing
         response = "No response generated"
         async with message.channel.typing():
             proc_message = await self.generate_proc_message(message.channel)
             response = await self.send_to_agent(proc_message)
+            opinion_change=0
 
-        await message.reply(response)
+            pattern = r'\(([-+]?\d+)\)'
+            matches = re.findall(pattern, response)
+            if matches:
+                if author_username not in self.people_opinions:
+                    self.people_opinions[author_username]=0
+                
+                opinion_change = clamp_value(-5, 5, int(matches[0]))
+                self.people_opinions[author_username] = clamp_value(-100, 100, self.people_opinions[author_username]+opinion_change)
+
+                write_dict_to_json(self.people_opinions, f'{link_to_memory}/opinions_list.json')
+
+                post_processed_response = re.sub(pattern, '', response)
+            else:
+                post_processed_response = response
+
+            if opinion_change > 0:
+                await message.add_reaction('😀')
+            elif opinion_change < 0:
+                await message.add_reaction('😠')
+        await message.reply(post_processed_response)
     #endregion
 
     #region Accessory Functions
@@ -63,21 +88,19 @@ class GlitchClient(discord.Client):
         i=len(llm_messages)-1
         async for message in channel.history(limit=message_count):
             content = message.clean_content
+            author_member = message.author
 
-            #API request. Consider changing to get_member instead
-            try:
-                author_member = await channel.guild.fetch_member(message.author.id) if channel.guild else message.author
-            except:
-                author_member = message.author
             if author_member == self.user:
                 llm_messages[i]={
                     "role": "assistant", 
                     "content": f"{content}"
                 }
             else:
+                message_author = author_member.global_name
+                opinion_of_user = self.people_opinions[message_author] if message_author in self.people_opinions else 0
                 llm_messages[i]={
                     "role": "user", 
-                    "content": f"{author_member.display_name} ({author_member.name}): {content}"
+                    "content": f"{message_author} <{opinion_of_user}>: {content}"
                 }
             i-=1
 
@@ -134,6 +157,29 @@ def get_day_suffix(day):
         }
         day_suff = normal_suffixes.get(suff_num)
     return f'{day}{day_suff}'
+#R/W functions
+def load_json_to_dict(filename):
+    try:
+        with open(filename, "r") as file:
+            return json.load(file)
+    except FileNotFoundError:
+        write_dict_to_json({}, filename)
+        return {}
+def write_dict_to_json(dict, filename):
+    with open(filename, "w") as file:
+        json.dump(dict, file, indent=2)
+def load_txt(filename):
+    with open(filename, 'r') as file:
+        return file.read()
+#https://tenor.com/view/futurama-robot-pincers-gif-17376524
+def clamp_value(min, max, value):
+    if value < min:
+        return min
+    elif value > max:
+        return max
+    else:
+        return value
+
 #endregion
 
 #region Initialization
@@ -144,9 +190,10 @@ discord_key = api_keys['API']['discord']
 intents = discord.Intents.default()
 intents.message_content = True
 
-with open('./personality.txt', 'r') as file:
-    personality = file.read()
+personality = load_txt(f'{link_to_memory}/personality.txt')
 
-client = GlitchClient(personality, intents=intents)
+opinions = load_json_to_dict(f'{link_to_memory}/opinions_list.json')
+
+client = GlitchClient(personality, opinions, intents)
 client.run(discord_key)
 #endregion

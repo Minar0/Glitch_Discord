@@ -1,4 +1,5 @@
 api_keys.ini
-backup/**
-tests/**
+backup
+tests
 start.sh
+glitch_memory/opinions_list.json
