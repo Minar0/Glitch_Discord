@@ -32,6 +32,9 @@ class GlitchClient(discord.Client):
         if message.author == self.user:
             return
 
+        #print("<@&1180692348196376626>" in message.content)
+        #print(message.content)
+
         #Checks if the received message should be responded to
         needs_response = False
         if message.type == discord.MessageType.reply:
@@ -39,15 +42,16 @@ class GlitchClient(discord.Client):
             ref_message = await message.channel.fetch_message(ref_message_id)
             if ref_message.author == self.user:
                 needs_response = True
-        elif "<@1180692348196376626>" in message.content or message.channel.type == discord.ChannelType.private:
+        elif "<@1180692348196376626>" in message.content or "<@&1183304745151103027>" in message.content:
+            needs_response = True
+        elif message.channel.type == discord.ChannelType.private:
             needs_response = True
         if not needs_response:
             return
-
         contains_word, filtered_word = contains_filtered_word(message.clean_content)
         if contains_word:
             print(f'Input message filtered on word: {filtered_word}')
-            await message.reply("You're message was caught by my filter, let Minaro know if you think this is an error")
+            await message.reply("You're message was caught by my input filter, let Minaro know if you think this is an error")
             return
 
         author_global_name = message.author.global_name
@@ -77,15 +81,15 @@ class GlitchClient(discord.Client):
             else:
                 post_processed_response = response
 
-            contains_word, filtered_word = contains_filtered_word(post_processed_response)
-            if contains_word:
-                post_processed_response = '[Filtered]'
-                print(f'Response message filtered on word: {filtered_word}')
-
             if opinion_change > 0:
                 await message.add_reaction('😀')
             elif opinion_change < 0:
                 await message.add_reaction('😠')
+
+            contains_word, filtered_word = contains_filtered_word(post_processed_response)
+            if contains_word:
+                post_processed_response = '[Filtered]'
+                print(f'Response message filtered on word: {filtered_word}')
         await message.reply(post_processed_response)
     #endregion
 
@@ -136,7 +140,7 @@ class GlitchClient(discord.Client):
                 async with session.post(url, headers=headers, json=proc_message) as response:
                     if response.status == 200:
                         json_response = await response.json()
-                        return_message = json_response['choices'][0]['message']['content']
+                        return_message = self.process_agent_response(json_response['choices'][0]['message']['content'])
                         print(f"Response: {return_message} \nTokens: {json_response['usage']}")
                         if json_response['usage']['completion_tokens'] >= max_tokens:
                             return_message += "...\n\noh, looks like I've hit my message length limit. Sorry."
@@ -147,6 +151,10 @@ class GlitchClient(discord.Client):
         except Exception as e:
             print(f"An error occurred: {e}")
             return "It looks like my speech center has been shut down. If you pester Minaro enough, he might turn it on."
+    def process_agent_response(self, message):
+        pattern = "^([^<]+)\s*<(\d+)>:?"
+        result = re.sub(pattern, '', message).strip()
+        return result
     #endregion
 
 

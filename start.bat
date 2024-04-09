@@ -13,8 +13,10 @@ timeout /t 2 /nobreak >nul
 docker info >nul 2>&1
 if errorlevel 1 goto CHECK_DOCKER
 
-echo Starting LlamaGPT webserver
-start "" /D "llama-gpt" run.sh --model 13b --with-cuda
+REM echo Starting LlamaGPT webserver
+REM cd llama-gpt
+REM start ./run.sh --model 13b --with-cuda
+REM cd ..
 
 echo Starting GlitchOS...
 python bot.py
