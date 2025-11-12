@@ -3,16 +3,16 @@ from discord.flags import Intents
 from datetime import datetime
 from typing import Any
 import json
-import aiohttp
+import requests
 import configparser
 import pprint
 import re
 import csv
 
-#region Tweakable Values
+#region Hyperparameters
 max_tokens = 50 #How many tokens Glitch is allowed to generate. Setting it too low will lead to him getting cut off. Setting it too high might lead to him getting... wordy.
 creativity = 0.7 #Value between 0-1. Also called temperature. Lower values are more deterministic. They might be faster too.
-message_lookback_amount = 5 #How many messages Glitch will look back in for conversation context. Setting it too high could lead to long response times.
+message_lookback_amount = 6 #How many messages Glitch will look back in for conversation context. Setting it too high could lead to long response times.
 print_proc_message = False #Used for trouble shooting. Prints the message sent to LlamaGPT in the log. Kinda long and annoying so I usually leave it off unless needed.
 link_to_memory = './glitch_memory' #Location for all the things Glitch knows.
 #endregion
@@ -128,31 +128,26 @@ class GlitchClient(discord.Client):
         }
         if print_proc_message: pprint.pprint(proc_message)
         return proc_message
+    
     async def send_to_agent(self, proc_message):
-        url = 'http://localhost:3001/v1/chat/completions'
-        headers = {
-            'accept': 'application/json',
-            'Content-Type': 'application/json'
+        # Update to point to your Ollama server
+        url = 'http://localhost:11434/api/chat'
+        ollama_payload = {
+            "model": 'deepseek-r1',
+            "messages": proc_message["messages"],
+            "stream": False
         }
 
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, headers=headers, json=proc_message) as response:
-                    if response.status == 200:
-                        json_response = await response.json()
-                        return_message = self.process_agent_response(json_response['choices'][0]['message']['content'])
-                        print(f"Response: {return_message} \nTokens: {json_response['usage']}")
-                        if json_response['usage']['completion_tokens'] >= max_tokens:
-                            return_message += "...\n\noh, looks like I've hit my message length limit. Sorry."
-                        return return_message
-                    else:
-                        print(f"Request failed with status code {response.status}: {await response.text()}")
-                        return "My speech center appears to be having a problem. Please let Minaro know and he'll fix me."
-        except Exception as e:
-            print(f"An error occurred: {e}")
-            return "It looks like my speech center has been shut down. If you pester Minaro enough, he might turn it on."
+        response = requests.post(url, json = ollama_payload)
+        json_response = json.loads(response.text)
+        print(f"Response: {json_response["message"]["content"]}")
+        
+        return_message = self.process_agent_response(json_response["message"]["content"])
+        return return_message
+        
+        
     def process_agent_response(self, message):
-        pattern = "^([^<]+)\s*<(\d+)>:?"
+        pattern = r'^([^<]+)\s*<(\d+)>:?'
         result = re.sub(pattern, '', message).strip()
         return result
     #endregion
