@@ -15,6 +15,8 @@ creativity = 0.7 #Value between 0-1. Also called temperature. Lower values are m
 message_lookback_amount = 6 #How many messages Glitch will look back in for conversation context. Setting it too high could lead to long response times.
 print_proc_message = False #Used for trouble shooting. Prints the message sent to LlamaGPT in the log. Kinda long and annoying so I usually leave it off unless needed.
 link_to_memory = './glitch_memory' #Location for all the things Glitch knows.
+url = 'http://localhost:11434/api/chat' #Url of the ollama server
+model = 'llama3.1:8b' #The model used to generate the response. Script does not check if this is correct
 #endregion
 
 class GlitchClient(discord.Client):
@@ -51,7 +53,7 @@ class GlitchClient(discord.Client):
         contains_word, filtered_word = contains_filtered_word(message.clean_content)
         if contains_word:
             print(f'Input message filtered on word: {filtered_word}')
-            await message.reply("You're message was caught by my input filter, let Minaro know if you think this is an error")
+            await message.reply("Your message was caught by my input filter, let Minaro know if you think this is an error")
             return
 
         author_global_name = message.author.global_name
@@ -61,6 +63,7 @@ class GlitchClient(discord.Client):
         
         #Let channel know that he's typing
         response = "No response generated"
+        print('Beginning text generation')
         async with message.channel.typing():
             proc_message = await self.generate_proc_message(message.channel)
             response = await self.send_to_agent(proc_message)
@@ -90,6 +93,7 @@ class GlitchClient(discord.Client):
             if contains_word:
                 post_processed_response = '[Filtered]'
                 print(f'Response message filtered on word: {filtered_word}')
+        print('Finished text generation')
         await message.reply(post_processed_response)
     #endregion
 
@@ -130,10 +134,9 @@ class GlitchClient(discord.Client):
         return proc_message
     
     async def send_to_agent(self, proc_message):
-        # Update to point to your Ollama server
-        url = 'http://localhost:11434/api/chat'
+        #Sends the text to the ollama server
         ollama_payload = {
-            "model": 'deepseek-r1',
+            "model": model,
             "messages": proc_message["messages"],
             "stream": False
         }
@@ -147,6 +150,7 @@ class GlitchClient(discord.Client):
         
         
     def process_agent_response(self, message):
+        #Sometimes the model puts odd tokens into the message.
         pattern = r'^([^<]+)\s*<(\d+)>:?'
         result = re.sub(pattern, '', message).strip()
         return result
