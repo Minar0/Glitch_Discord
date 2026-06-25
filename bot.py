@@ -12,7 +12,7 @@ import csv
 #region Hyperparameters
 max_tokens = 50 #How many tokens Glitch is allowed to generate. Setting it too low will lead to him getting cut off. Setting it too high might lead to him getting... wordy.
 creativity = 0.7 #Value between 0-1. Also called temperature. Lower values are more deterministic. They might be faster too.
-message_lookback_amount = 6 #How many messages Glitch will look back in for conversation context. Setting it too high could lead to long response times.
+message_lookback_amount = 7 #How many messages Glitch will look back in for conversation context. Setting it too high could lead to long response times.
 print_proc_message = False #Used for trouble shooting. Prints the message sent to LlamaGPT in the log. Kinda long and annoying so I usually leave it off unless needed.
 link_to_memory = './glitch_memory' #Location for all the things Glitch knows.
 url = 'http://localhost:11434/api/chat' #Url of the ollama server
@@ -93,7 +93,7 @@ class GlitchClient(discord.Client):
             if contains_word:
                 post_processed_response = '[Filtered]'
                 print(f'Response message filtered on word: {filtered_word}')
-        print('Finished text generation')
+        print('Finished text generation\n')
         await message.reply(post_processed_response)
     #endregion
 
@@ -164,6 +164,7 @@ def get_date_time_str():
         date = current_datetime.strftime(f'%B {get_day_suffix(current_datetime.day)}, %Y')
         time = current_datetime.strftime('%I:%M%p CST')
         return f'The date is {date}\nThe time is {time}'
+
 #Get the correct suffix for the day. IE: 5 -> 5th, 23->23rd, 31->31st, etc
 def get_day_suffix(day):
     suff_num = day % 10
@@ -176,6 +177,7 @@ def get_day_suffix(day):
         }
         day_suff = normal_suffixes.get(suff_num)
     return f'{day}{day_suff}'
+
 #R/W functions
 def load_json_to_dict(filename):
     try:
@@ -184,16 +186,20 @@ def load_json_to_dict(filename):
     except FileNotFoundError:
         write_dict_to_json({}, filename)
         return {}
+
 def write_dict_to_json(dict, filename):
     with open(filename, "w") as file:
         json.dump(dict, file, indent=2)
+
 def load_txt(filename):
     with open(filename, 'r') as file:
         return file.read()
+
 def load_first_csv_row(filename):
     with open(filename, 'r', newline='', encoding='utf-8') as csvfile:
         reader = csv.reader(csvfile)
         return next(reader, None)
+
 #https://tenor.com/view/futurama-robot-pincers-gif-17376524
 def clamp_value(min, max, value):
     if value < min:
@@ -202,8 +208,10 @@ def clamp_value(min, max, value):
         return max
     else:
         return value
+
 #Checks if the response needs to be filtered. It's necessary when you have shit friends.
 def contains_filtered_word(text):
+    text = re.sub(r'[^A-Za-z0-9 ]+', '', text)
     text_array = text.split()
     for word in text_array:
         if word.lower() in filter_list:
