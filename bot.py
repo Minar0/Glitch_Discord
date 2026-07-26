@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any
 import json
 import requests
+import asyncio
 import configparser
 import pprint
 import re
@@ -12,7 +13,7 @@ import csv
 #region Hyperparameters
 max_tokens = 50 #How many tokens Glitch is allowed to generate. Setting it too low will lead to him getting cut off. Setting it too high might lead to him getting... wordy.
 creativity = 0.7 #Value between 0-1. Also called temperature. Lower values are more deterministic. They might be faster too.
-message_lookback_amount = 7 #How many messages Glitch will look back in for conversation context. Setting it too high could lead to long response times.
+message_lookback_amount = 6 #How many messages Glitch will look back in for conversation context. Setting it too high could lead to long response times.
 print_proc_message = False #Used for trouble shooting. Prints the message sent to LlamaGPT in the log. Kinda long and annoying so I usually leave it off unless needed.
 link_to_memory = './glitch_memory' #Location for all the things Glitch knows.
 url = 'http://localhost:11434/api/chat' #Url of the ollama server
@@ -53,8 +54,8 @@ class GlitchClient(discord.Client):
         contains_word, filtered_word = contains_filtered_word(message.clean_content)
         if contains_word:
             print(f'Input message filtered on word: {filtered_word}')
-            await message.reply("Your message was caught by my input filter, let Minaro know if you think this is an error")
-            return
+            # await message.reply("Your message was caught by my input filter, let Minaro know if you think this is an error")
+            # return
 
         author_global_name = message.author.global_name
         author_username = message.author.name
@@ -63,7 +64,6 @@ class GlitchClient(discord.Client):
         
         #Let channel know that he's typing
         response = "No response generated"
-        print('Beginning text generation')
         async with message.channel.typing():
             proc_message = await self.generate_proc_message(message.channel)
             response = await self.send_to_agent(proc_message)
@@ -93,7 +93,6 @@ class GlitchClient(discord.Client):
             if contains_word:
                 post_processed_response = '[Filtered]'
                 print(f'Response message filtered on word: {filtered_word}')
-        print('Finished text generation\n')
         await message.reply(post_processed_response)
     #endregion
 
@@ -141,16 +140,18 @@ class GlitchClient(discord.Client):
             "stream": False
         }
 
-        response = requests.post(url, json = ollama_payload)
+        response = await asyncio.to_thread(requests.post, url, json=ollama_payload)
         json_response = json.loads(response.text)
         print(f"Response: {json_response["message"]["content"]}")
         
         return_message = self.process_agent_response(json_response["message"]["content"])
+        return_message = json_response["message"]["content"]
         return return_message
         
         
     def process_agent_response(self, message):
         #Sometimes the model puts odd tokens into the message.
+        #Disabled for now
         pattern = r'^([^<]+)\s*<(\d+)>:?'
         result = re.sub(pattern, '', message).strip()
         return result
@@ -211,7 +212,7 @@ def clamp_value(min, max, value):
 
 #Checks if the response needs to be filtered. It's necessary when you have shit friends.
 def contains_filtered_word(text):
-    text = re.sub(r'[^A-Za-z0-9 ]+', '', text)
+    re.sub(r'[^A-Za-z0-9 ]+', '', text)
     text_array = text.split()
     for word in text_array:
         if word.lower() in filter_list:
